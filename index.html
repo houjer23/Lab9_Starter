@@ -7,6 +7,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lab 9</title>
 
+  <!-- TrackJS: replace YOUR_TRACKJS_TOKEN with your token from https://my.trackjs.com -->
+  <script src="https://cdn.trackjs.com/agent/v3/latest/t.js"></script>
+  <script>
+    window.TrackJS && TrackJS.install({
+      token: 'a8578c2e96bd45a7af84816d71decf8c',
+      application: 'cse110-lab9',
+    });
+  </script>
+
   <style>
     button {
       margin: 3px;
@@ -65,6 +74,8 @@
         <button id="calculate">Calculate</button>
         <br />
         <output></output>
+        <!-- Status line was removed from the page; see "Trigger a Global Error" in script -->
+        <!-- <span id="calc-status"></span> -->
       </fieldset>
     </form>
 
@@ -88,6 +99,82 @@
   </main>
 
   <script>
+    class CalculatorError extends Error {
+      constructor(message) {
+        super(message);
+        this.name = 'CalculatorError';
+      }
+    }
+
+    class MissingOperandError extends CalculatorError {
+      constructor() {
+        super('Both numbers are required.');
+        this.name = 'MissingOperandError';
+      }
+    }
+
+    class InvalidInputError extends CalculatorError {
+      constructor(value) {
+        super(`"${value}" is not a valid number.`);
+        this.name = 'InvalidInputError';
+        this.value = value;
+      }
+    }
+
+    class DivideByZeroError extends CalculatorError {
+      constructor() {
+        super('Cannot divide by zero.');
+        this.name = 'DivideByZeroError';
+      }
+    }
+
+    class UnknownOperatorError extends CalculatorError {
+      constructor(operator) {
+        super(`Unknown operator: ${operator}`);
+        this.name = 'UnknownOperatorError';
+        this.operator = operator;
+      }
+    }
+
+    function calculate(firstRaw, operator, secondRaw) {
+      if (firstRaw.trim() === '' || secondRaw.trim() === '') {
+        throw new MissingOperandError();
+      }
+
+      const first = Number(firstRaw);
+      const second = Number(secondRaw);
+
+      if (Number.isNaN(first)) {
+        throw new InvalidInputError(firstRaw);
+      }
+      if (Number.isNaN(second)) {
+        throw new InvalidInputError(secondRaw);
+      }
+      if (operator === '/' && second === 0) {
+        throw new DivideByZeroError();
+      }
+
+      let expression;
+      switch (operator) {
+        case '+':
+          expression = `${first} + ${second}`;
+          break;
+        case '-':
+          expression = `${first} - ${second}`;
+          break;
+        case '*':
+          expression = `${first} * ${second}`;
+          break;
+        case '/':
+          expression = `${first} / ${second}`;
+          break;
+        default:
+          throw new UnknownOperatorError(operator);
+      }
+
+      return eval(expression);
+    }
+
     let form = document.querySelector('form');
     form.addEventListener('submit', e => {
       e.preventDefault();
@@ -95,13 +182,157 @@
       let firstNum = document.querySelector('#first-num').value;
       let secondNum = document.querySelector('#second-num').value;
       let operator = document.querySelector('#operator').value;
-      output.innerHTML = eval(`${firstNum} ${operator} ${secondNum}`);
+
+      try {
+        const result = calculate(firstNum, operator, secondNum);
+        output.textContent = result;
+        console.log('Calculation succeeded:', result);
+      } catch (err) {
+        if (window.TrackJS) {
+          TrackJS.track(err);
+        }
+        if (err instanceof DivideByZeroError) {
+          console.warn(`[${err.name}]`, err.message);
+          output.textContent = 'Math error: ' + err.message;
+        } else if (err instanceof InvalidInputError) {
+          console.warn(`[${err.name}] invalid value:`, err.value);
+          output.textContent = 'Input error: ' + err.message;
+        } else if (err instanceof CalculatorError) {
+          console.warn(`[${err.name}]`, err.message);
+          output.textContent = 'Calculator: ' + err.message;
+        } else {
+          console.error('Unexpected calculator failure:', err);
+          output.textContent = 'Unexpected error: ' + err.message;
+        }
+      } finally {
+        console.log('Calculation attempt finished (finally always runs).');
+      }
     });
 
     let errorBtns = Array.from(document.querySelectorAll('#error-btns > button'));
 
-    // Start your code here
-    // You may move this JS to another file if you wish
+    const demoPerson = {
+      name: 'Ada Lovelace',
+      role: 'Developer',
+      skills: ['JavaScript', 'HTML', 'CSS'],
+    };
+
+    const demoTable = [
+      { id: 1, name: 'Alice', score: 95 },
+      { id: 2, name: 'Bob', score: 87 },
+      { id: 3, name: 'Carol', score: 92 },
+    ];
+
+    const timerLabel = 'lab9-demo-timer';
+    const groupLabel = 'Console Group demo';
+    let consoleGroupOpen = false;
+
+    // Global errors: log locally, then forward to TrackJS (do not replace its handler)
+    const trackJsOnError = window.onerror;
+    window.onerror = function (message, source, lineno, colno, error) {
+      console.log(
+        'Global error caught by window.onerror:',
+        message,
+        `(${source}:${lineno}:${colno})`,
+        error
+      );
+      if (trackJsOnError) {
+        return trackJsOnError.call(this, message, source, lineno, colno, error);
+      }
+      return false;
+    };
+
+    const globalErrorBtn = errorBtns.find(
+      btn => btn.textContent.trim() === 'Trigger a Global Error'
+    );
+
+    if (globalErrorBtn) {
+      globalErrorBtn.addEventListener('click', () => {
+        // No try/catch — references DOM removed in HTML comment above
+        const statusEl = document.querySelector('#calc-status');
+        statusEl.textContent = 'Calculator status: ready';
+      });
+    }
+
+    errorBtns.forEach(btn => {
+      if (btn.textContent.trim() === 'Trigger a Global Error') {
+        return;
+      }
+
+      btn.addEventListener('click', () => {
+        const label = btn.textContent.trim();
+
+        switch (label) {
+          case 'Console Log':
+            console.log('Console Log demo:', demoPerson);
+            break;
+          case 'Console Error':
+            console.error('Console Error demo:', new Error('Example error message'));
+            break;
+          case 'Console Count':
+            console.count('Console Count demo');
+            break;
+          case 'Console Warn':
+            console.warn('Console Warn demo: check your inputs before calculating.');
+            break;
+          case 'Console Assert':
+            console.assert(1 + 1 === 3, 'Console Assert demo: this should not appear');
+            console.assert(1 + 1 === 2, 'Console Assert demo: this assertion passed');
+            break;
+          case 'Console Clear':
+            console.clear();
+            consoleGroupOpen = false;
+            break;
+          case 'Console Dir':
+            console.dir(demoPerson);
+            break;
+          case 'Console dirxml':
+            const sampleNode = document.createElement('article');
+            sampleNode.innerHTML = '<h2>dirxml demo</h2><p>Nested element for console.dirxml</p>';
+            console.dirxml(sampleNode);
+            break;
+          case 'Console Group Start':
+            if (consoleGroupOpen) {
+              console.groupEnd(groupLabel);
+            }
+            console.group(groupLabel);
+            consoleGroupOpen = true;
+            console.log('Inside group: step 1');
+            console.log('Inside group: step 2');
+            console.warn('Inside group: optional warning');
+            console.log('Click "Console Group End" to close this group.');
+            break;
+          case 'Console Group End':
+            if (!consoleGroupOpen) {
+              console.warn('No console group is open. Click "Console Group Start" first.');
+              break;
+            }
+            console.log('Inside group: closing…');
+            console.groupEnd(groupLabel);
+            consoleGroupOpen = false;
+            console.log('Console group closed.');
+            break;
+          case 'Console Table':
+            console.table(demoTable);
+            break;
+          case 'Start Timer':
+            console.time(timerLabel);
+            console.log(`Timer "${timerLabel}" started — click End Timer when ready.`);
+            break;
+          case 'End Timer':
+            console.timeEnd(timerLabel);
+            break;
+          case 'Console Trace':
+            function innerTrace() {
+              console.trace('Console Trace demo: call stack from innerTrace()');
+            }
+            innerTrace();
+            break;
+          default:
+            break;
+        }
+      });
+    });
   </script>
 </body>
 
